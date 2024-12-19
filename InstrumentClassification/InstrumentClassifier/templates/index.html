@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Instrument Classifier</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: 'Poppins', sans-serif;
+        font-size: 18px;
+      }
+      html {
+        height: 100%;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        background: #222;
+        background-size: cover;
+        color: white;
+        min-height: 100vh;
+        width: 100%;
+        margin: 0;
+      }
+      .container {
+        text-align: center;
+        margin-top: 20px;
+        display: flex;
+        align-items: center;
+        flex-direction: column;
+      }
+      h1 {
+        font-size: 2.3rem;
+      }
+      h2 {
+        font-size: 1.3rem;
+      }
+      .button {
+        padding: 10px 20px;
+        background-color: #008cba;
+        color: white;
+        border: none;
+        cursor: pointer;
+        border-radius: 5px;
+        font-size: 1em;
+      }
+      #result {
+        margin-top: 20px;
+        font-size: 1.2em;
+        font-weight: bold;
+      }
+      .drag-area {
+        border: 2px dashed #008cba;
+        padding: 20px;
+        border-radius: 10px;
+        margin-top: 20px;
+        height: 100%;
+        width: 50%;
+      }
+      .overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        font-size: 2em;
+        display: none;
+      }
+      input[type='file'] {
+        display: none;
+      }
+      .custom-file-upload {
+        display: inline-block;
+        padding: 10px 20px;
+        cursor: pointer;
+        background-color: #008cba;
+        color: white;
+        border-radius: 5px;
+        font-size: 1em;
+        margin-top: 10px;
+      }
+      #loading {
+        display: none;
+        font-size: 1.5em;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Instrument Classifier</h1>
+
+      <div id="drag-area" class="drag-area">
+        <h2>Upload file or drop here</h2>
+
+        <label for="file-input" class="custom-file-upload">Choose File</label>
+        <input type="file" id="file-input" accept="audio/*" />
+        <div id="result"></div>
+        <div id="loading">Loading...</div>
+      </div>
+    </div>
+
+    <div id="overlay" class="overlay">Drop here</div>
+
+    <script>
+      const VALID_EXTENSIONS = ['mp3', 'wav']
+      const MAX_FILE_SIZE = 800 * 1024 * 1024 // 800MB
+      
+      const dragArea = document.getElementById('drag-area')
+      const fileInput = document.getElementById('file-input')
+      const resultDiv = document.getElementById('result')
+      const overlay = document.getElementById('overlay')
+      const loadingDiv = document.getElementById('loading')
+      
+      let overlayTimeout
+      
+      function isValidFile(file) {
+        const fileExtension = file.name.split('.').pop().toLowerCase()
+        const isValidExtension = VALID_EXTENSIONS.includes(fileExtension)
+        const isValidSize = file.size <= MAX_FILE_SIZE
+      
+        if (!isValidExtension) {
+          resultDiv.innerHTML = 'Invalid file type. Only mp3 and wav files are allowed.'
+          return false
+        }
+      
+        if (!isValidSize) {
+          resultDiv.innerHTML = 'File size exceeds 800MB limit.'
+          return false
+        }
+      
+        return true
+      }
+      
+      function handleFile(file) {
+        if (!isValidFile(file)) {
+          loadingDiv.style.display = 'none'
+          return
+        }
+      
+        const formData = new FormData()
+        formData.append('file', file)
+      
+        console.log('Sending file:', file.name, file.size)
+        loadingDiv.style.display = 'block'
+      
+        fetch('/upload/', {
+          method: 'POST',
+          body: formData
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            console.log('Received response:', data)
+            loadingDiv.style.display = 'none'
+      
+            if (data.predictions) {
+              const predictions = data.predictions
+              let resultText = 'Predictions:<br>'
+              for (const [className, percentage] of Object.entries(predictions)) {
+                resultText += `${className}: ${percentage}<br>`
+              }
+              resultDiv.innerHTML = resultText
+            } else {
+              resultDiv.innerHTML = 'Error: ' + data.error
+            }
+          })
+          .catch((error) => {
+            console.log('Error occurred:', error)
+            loadingDiv.style.display = 'none'
+            resultDiv.innerHTML = 'An error occurred!'
+          })
+      }
+      
+      function handleDragOver(e) {
+        e.preventDefault()
+        clearTimeout(overlayTimeout)
+        overlay.style.display = 'flex'
+      }
+      
+      function handleDragLeave(e) {
+        e.preventDefault()
+        overlayTimeout = setTimeout(() => {
+          overlay.style.display = 'none'
+        }, 100)
+      }
+      
+      function handleDrop(e) {
+        e.preventDefault()
+        clearTimeout(overlayTimeout)
+        overlay.style.display = 'none'
+      
+        const files = e.dataTransfer.files
+        if (files.length > 0) {
+          console.log('Dropped file:', files[0].name, files[0].size)
+          handleFile(files[0])
+        } else {
+          console.log('No files dropped')
+        }
+      }
+      
+      function handleFileInputChange(e) {
+        const files = e.target.files
+        if (files.length > 0) {
+          handleFile(files[0])
+        }
+      }
+      
+      document.body.addEventListener('dragover', handleDragOver)
+      document.body.addEventListener('dragleave', handleDragLeave)
+      document.body.addEventListener('drop', handleDrop)
+      fileInput.addEventListener('change', handleFileInputChange)
+    </script>
+  </body>
+</html>
